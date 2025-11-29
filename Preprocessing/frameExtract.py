@@ -33,7 +33,7 @@ def extract_frames(video_path, target_folder):
 FOLDER_NAME = './'
 target_folder = os.path.join(FOLDER_NAME, 'Dataset_Images')
 
-folder1 = ["Dataset/hate_videos/", "Dataset/non_hate_videos/"]
+folder1 = ["/content/drive/MyDrive/Dataset/hate_videos", "/content/drive/MyDrive/Dataset/non_hate_videos"]
 
 for subDir in folder1:
     print(subDir)
