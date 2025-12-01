@@ -1,26 +1,28 @@
 import os
 import soundfile as sf
-
+import librosa
 import torch
 from transformers import pipeline
-from transformers import AutoProcessor, WhisperForConditionalGeneration
+from tqdm import tqdm
 
-processor = AutoProcessor.from_pretrained("openai/whisper-tiny.en")
-model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-tiny.en")
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print("Using device:", device)
 
-# Path to the Dataset folder containing video files
-video_folder = "/content/drive/MyDrive/Dataset/hate_videos"
+# Folder containing NON-HATE videos
+video_folder = "/content/drive/MyDrive/Dataset/non_hate_videos"
 
-# Path to the log file that keeps track of processed videos
-processed_log_path = "processed_audios.txt"
+#for hate videos, uncomment the line below
+#video_folder = "/content/drive/MyDrive/Dataset/hate_videos"
 
-device = "cuda:0" if torch.cuda.is_available() else "cpu"
+# Save transcripts inside the same folder
+# E.g. non_hate_video_1_whisper_tiny.txt
+processed_log_path = "/content/drive/MyDrive/HateMM/processed_audios_nonhate.txt"
 
 pipe = pipeline(
-  "automatic-speech-recognition",
-  model="openai/whisper-tiny.en",
-  chunk_length_s=30,
-  device=device,
+    "automatic-speech-recognition",
+    model="openai/whisper-tiny.en",
+    chunk_length_s=30,
+    device=0 if torch.cuda.is_available() else -1,
 )
 
 def load_processed_audios():
@@ -34,33 +36,35 @@ def log_processed_audio(video_name):
         file.write(video_name + "\n")
 
 def process_audios(video_folder):
-    transcripts = {}
-    processed_audios = load_processed_audios()
-    for audio_file in os.listdir(video_folder):
-        if audio_file.endswith(".wav") and audio_file not in processed_audios:
-            audio_path = os.path.join(video_folder, audio_file)
-            transcript_path = audio_path.replace(".wav", "_whisper_tiny.txt")
-            sample = sf.read(audio_path)
-            print(f"Processing {audio_file}...")
-            if sample:
-                try:
-                    transcript = pipe(sample[0].copy(), batch_size=8)["text"]
-                    if transcript:
-                        transcripts[audio_file] = transcript
-                        with open(transcript_path, 'w') as f:
-                            f.write(transcript)
-                        log_processed_audio(audio_file)
-                    else:
-                        print(f"Failed to transcribe {audio_file}")
-                except StopIteration:
-                    print(f"StopIteration error occurred while processing {audio_file}")
-            else:
-                print(f"Failed to extract audio from {audio_file}")
-        else:
-            print(f"Skipping already processed file: {audio_file}")
-    
-    return transcripts
+    processed = load_processed_audios()
+
+    for video_file in tqdm(os.listdir(video_folder)):
+        if not video_file.endswith(".mp4"):
+            continue
+
+        if video_file in processed:
+            continue  # skip already processed
+
+        video_path = os.path.join(video_folder, video_file)
+        transcript_path = video_path.replace(".mp4", "_whisper_tiny.txt")
+
+        print(f"Processing {video_file}...")
+
+        try:
+            # load audio using librosa
+            audio, sr = librosa.load(video_path, sr=16000, mono=True)
+
+            transcript = pipe(audio)["text"]
+
+            with open(transcript_path, "w") as f:
+                f.write(transcript)
+
+            log_processed_audio(video_file)
+
+        except Exception as e:
+            print(f"Failed on {video_file}: {e}")
+
+    print("Transcription completed for non-hate videos.")
 
 if __name__ == "__main__":
-    transcripts = process_audios(video_folder)
-    print("Transcription completed.")
+    process_audios(video_folder)
